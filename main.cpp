@@ -13,7 +13,7 @@ using namespace std;
 class FileNotWork : public exception {
     string message;
 public:
-    FileNotWork (const string& msg) : message(msg){}
+    FileNotWork(const string& msg) : message(msg) {}
     const char* what() const noexcept override {
         return message.c_str();
     }
@@ -51,11 +51,8 @@ public:
         file.read(reinterpret_cast<char*>(&width), 4);
         file.read(reinterpret_cast<char*>(&height), 4);
 
-        uint16_t bfReserved;
-        file.read(reinterpret_cast<char*>(&bfReserved), 2);
-        file.read(reinterpret_cast<char*>(&bfReserved), 2);
-
         uint32_t bfOffBits;
+        file.seekg(10);
         file.read(reinterpret_cast<char*>(&bfOffBits), 4);
         file.seekg(bfOffBits);
 
@@ -63,9 +60,9 @@ public:
         image.resize(width * height);
         for (int i = height - 1; i >= 0; --i) {
             for (int j = 0; j < width; ++j) {
-                file.read(reinterpret_cast<char*>(&image[i].b), 1);
-                file.read(reinterpret_cast<char*>(&image[i].g), 1);
-                file.read(reinterpret_cast<char*>(&image[i].r), 1);
+                file.read(reinterpret_cast<char*>(&image[i * width + j].b), 1);
+                file.read(reinterpret_cast<char*>(&image[i * width + j].g), 1);
+                file.read(reinterpret_cast<char*>(&image[i * width + j].r), 1);
             }
             file.ignore(row_padded - width * 3);
         }
@@ -74,9 +71,7 @@ public:
     }
 };
 
-
-// для чтения YUV420 файла
-class YUV420Reader{
+class YUV420Reader {
 public:
     static bool read(const string& filename, vector<uint8_t>& yuvData, int width, int height) {
         ifstream file(filename, ios::binary);
@@ -108,18 +103,16 @@ public:
     }
 };
 
-// для преобразования RGB в YUV420
-class convertRGBToYUV420 {
+class Converter {
 public:
-
-static void RGBToYUV420(const vector<RGB>& rgbImage, vector<YUV>& yuvImage, int width, int height) {
-    yuvImage.resize(width * height);
+    static void RGBToYUV420(const vector<RGB>& rgbImage, vector<YUV>& yuvImage, int width, int height) {
+        yuvImage.resize(width * height);
 
         auto rgbToYuv = [](RGB rgb) -> YUV {
             YUV yuv;
             yuv.y = static_cast<uint8_t>(0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b);
-            yuv.u = static_cast<uint8_t>(-0.169 * rgb.r - 0.331 * rgb.g + 0.5 * rgb.b + 128);
-            yuv.v = static_cast<uint8_t>(0.5 * rgb.r - 0.419 * rgb.g - 0.081 * rgb.b + 128);
+            yuv.u = static_cast<uint8_t>((-0.169 * rgb.r - 0.331 * rgb.g + 0.5 * rgb.b) + 128);
+            yuv.v = static_cast<uint8_t>((0.5 * rgb.r - 0.419 * rgb.g - 0.081 * rgb.b) + 128);
             return yuv;
         };
 
@@ -145,13 +138,14 @@ static void RGBToYUV420(const vector<RGB>& rgbImage, vector<YUV>& yuvImage, int 
         }
     }
 };
-// для наложения одного изображения на другое
+
 class Overlay {
 public:
-
-    static void overlayImage(vector<uint8_t>& frame, const vector<YUV>& overlay, int width, int height, int overlayWidth, int overlayHeight, int posX, int posY) {
+    static void apply(vector<uint8_t>& frame, const vector<YUV>& overlay, int width, int height, int overlayWidth, int overlayHeight, int posX, int posY) {
         for (int y = 0; y < overlayHeight; ++y) {
             for (int x = 0; x < overlayWidth; ++x) {
+                if (posY + y >= height || posX + x >= width) continue; // Check bounds
+
                 int frameIndex = (posY + y) * width + (posX + x);
                 int overlayIndex = y * overlayWidth + x;
 
@@ -166,22 +160,9 @@ public:
         }
     }
 };
-/* Функция для записи YUV420 файла
-bool writeYUV420(const string& filename, const vector<uint8_t>& yuvData) {
-    ofstream file(filename, ios::binary);
-    if (!file.is_open()) {
-        cerr << "Error opening output YUV file" << endl;
-        return false;
-    }
 
-    file.write(reinterpret_cast<const char*>(yuvData.data()), yuvData.size());
-
-    file.close();
-    return true;
-}
-*/
 int main() {
-    
+    setlocale(LC_ALL, "rus");
 
     // Пути к файлам и размеры
     string inputYUVFile = "C:/Users/Зуфар/Desktop/Yo/C/CMakeYuvBmp/akiyo_qcif.yuv";
@@ -210,9 +191,9 @@ int main() {
     }
 
     vector<YUV> yuvImage;
-    convertRGBToYUV420::RGBToYUV420(bmpImage, yuvImage, bmpWidth, bmpHeight);
+    Converter::RGBToYUV420(bmpImage, yuvImage, bmpWidth, bmpHeight);
 
-    Overlay::overlayImage(yuvFrame, yuvImage, width, height, bmpWidth, bmpHeight, 0, 0);
+    Overlay::apply(yuvFrame, yuvImage, width, height, bmpWidth, bmpHeight, 0, 0);
 
     try {
         YUV420Writer::write(outputYUVFile, yuvFrame);
