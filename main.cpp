@@ -94,59 +94,79 @@ public:
     }
 };
 
-// Функция для преобразования RGB в YUV420
-void convertRGBToYUV420(const vector<RGB>& rgbImage, vector<YUV>& yuvImage, int width, int height) {
+class YUV420Writer {
+public:
+    static bool write(const string& filename, const vector<uint8_t>& yuvData) {
+        ofstream file(filename, ios::binary);
+        if (!file.is_open()) {
+            throw FileNotWork("Error opening output YUV file");
+        }
+
+        file.write(reinterpret_cast<const char*>(yuvData.data()), yuvData.size());
+        file.close();
+        return true;
+    }
+};
+
+// для преобразования RGB в YUV420
+class convertRGBToYUV420 {
+public:
+
+static void RGBToYUV420(const vector<RGB>& rgbImage, vector<YUV>& yuvImage, int width, int height) {
     yuvImage.resize(width * height);
 
-    auto rgbToYuv = [](RGB rgb) -> YUV {
-        YUV yuv;
-        yuv.y = static_cast<uint8_t>(0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b);
-        yuv.u = static_cast<uint8_t>(-0.169 * rgb.r - 0.331 * rgb.g + 0.5 * rgb.b + 128);
-        yuv.v = static_cast<uint8_t>(0.5 * rgb.r - 0.419 * rgb.g - 0.081 * rgb.b + 128);
-        return yuv;
-    };
+        auto rgbToYuv = [](RGB rgb) -> YUV {
+            YUV yuv;
+            yuv.y = static_cast<uint8_t>(0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b);
+            yuv.u = static_cast<uint8_t>(-0.169 * rgb.r - 0.331 * rgb.g + 0.5 * rgb.b + 128);
+            yuv.v = static_cast<uint8_t>(0.5 * rgb.r - 0.419 * rgb.g - 0.081 * rgb.b + 128);
+            return yuv;
+        };
 
-    int numThreads = thread::hardware_concurrency();
-    vector<thread> threads(numThreads);
-    int partHeight = height / numThreads;
+        int numThreads = thread::hardware_concurrency();
+        vector<thread> threads(numThreads);
+        int partHeight = height / numThreads;
 
-    for (int t = 0; t < numThreads; ++t) {
-        threads[t] = thread([&, t]() {
-            int startY = t * partHeight;
-            int endY = (t == numThreads - 1) ? height : startY + partHeight;
-            for (int y = startY; y < endY; ++y) {
-                for (int x = 0; x < width; ++x) {
-                    int index = y * width + x;
-                    yuvImage[index] = rgbToYuv(rgbImage[index]);
+        for (int t = 0; t < numThreads; ++t) {
+            threads[t] = thread([&, t]() {
+                int startY = t * partHeight;
+                int endY = (t == numThreads - 1) ? height : startY + partHeight;
+                for (int y = startY; y < endY; ++y) {
+                    for (int x = 0; x < width; ++x) {
+                        int index = y * width + x;
+                        yuvImage[index] = rgbToYuv(rgbImage[index]);
+                    }
                 }
-            }
-            });
+                });
+        }
+
+        for (auto& thread : threads) {
+            thread.join();
+        }
     }
+};
+// для наложения одного изображения на другое
+class Overlay {
+public:
 
-    for (auto& thread : threads) {
-        thread.join();
-    }
-}
+    static void overlayImage(vector<uint8_t>& frame, const vector<YUV>& overlay, int width, int height, int overlayWidth, int overlayHeight, int posX, int posY) {
+        for (int y = 0; y < overlayHeight; ++y) {
+            for (int x = 0; x < overlayWidth; ++x) {
+                int frameIndex = (posY + y) * width + (posX + x);
+                int overlayIndex = y * overlayWidth + x;
 
-// Функция для наложения одного изображения на другое
-void overlayImage(vector<uint8_t>& frame, const vector<YUV>& overlay, int width, int height, int overlayWidth, int overlayHeight, int posX, int posY) {
-    for (int y = 0; y < overlayHeight; ++y) {
-        for (int x = 0; x < overlayWidth; ++x) {
-            int frameIndex = (posY + y) * width + (posX + x);
-            int overlayIndex = y * overlayWidth + x;
+                frame[frameIndex] = overlay[overlayIndex].y;
 
-            frame[frameIndex] = overlay[overlayIndex].y;
-
-            if (y % 2 == 0 && x % 2 == 0) {
-                int chromaIndex = (posY + y) / 2 * (width / 2) + (posX + x) / 2;
-                frame[width * height + chromaIndex] = overlay[overlayIndex].u;
-                frame[width * height + width * height / 4 + chromaIndex] = overlay[overlayIndex].v;
+                if (y % 2 == 0 && x % 2 == 0) {
+                    int chromaIndex = (posY + y) / 2 * (width / 2) + (posX + x) / 2;
+                    frame[width * height + chromaIndex] = overlay[overlayIndex].u;
+                    frame[width * height + width * height / 4 + chromaIndex] = overlay[overlayIndex].v;
+                }
             }
         }
     }
-}
-
-// Функция для записи YUV420 файла
+};
+/* Функция для записи YUV420 файла
 bool writeYUV420(const string& filename, const vector<uint8_t>& yuvData) {
     ofstream file(filename, ios::binary);
     if (!file.is_open()) {
@@ -159,9 +179,9 @@ bool writeYUV420(const string& filename, const vector<uint8_t>& yuvData) {
     file.close();
     return true;
 }
-
+*/
 int main() {
-    setlocale(LC_ALL, "rus");
+    
 
     // Пути к файлам и размеры
     string inputYUVFile = "C:/Users/Зуфар/Desktop/Yo/C/CMakeYuvBmp/akiyo_qcif.yuv";
@@ -172,24 +192,35 @@ int main() {
 
     vector<RGB> bmpImage;
     int bmpWidth, bmpHeight;
-    if (!readBMP(inputBMPFile, bmpImage, bmpWidth, bmpHeight)) {
+    try {
+        BMPReader::read(inputBMPFile, bmpImage, bmpWidth, bmpHeight);
+    }
+    catch (const FileNotWork& e) {
+        cerr << e.what() << endl;
         return 1;
     }
 
     vector<uint8_t> yuvFrame;
-    if (!readYUV420(inputYUVFile, yuvFrame, width, height)) {
+    try {
+        YUV420Reader::read(inputYUVFile, yuvFrame, width, height);
+    }
+    catch (const FileNotWork& e) {
+        cerr << e.what() << endl;
         return 1;
     }
 
     vector<YUV> yuvImage;
-    convertRGBToYUV420(bmpImage, yuvImage, bmpWidth, bmpHeight);
+    convertRGBToYUV420::RGBToYUV420(bmpImage, yuvImage, bmpWidth, bmpHeight);
 
-    overlayImage(yuvFrame, yuvImage, width, height, bmpWidth, bmpHeight, 0, 0);
+    Overlay::overlayImage(yuvFrame, yuvImage, width, height, bmpWidth, bmpHeight, 0, 0);
 
-    if (!writeYUV420(outputYUVFile, yuvFrame)) {
+    try {
+        YUV420Writer::write(outputYUVFile, yuvFrame);
+    }
+    catch (const FileNotWork& e) {
+        cerr << e.what() << endl;
         return 1;
     }
-   
 
     cout << "Overlay completed successfully!" << endl;
 
