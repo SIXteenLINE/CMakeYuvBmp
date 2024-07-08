@@ -5,7 +5,19 @@
 #include <cmath>
 #include <cstring>
 #include <string>
+#include <memory>
+#include <exception>
+
 using namespace std;
+
+class FileNotWork : public exception {
+    string message;
+public:
+    FileNotWork (const string& msg) : message(msg){}
+    const char* what() const noexcept override {
+        return message.c_str();
+    }
+};
 
 // Структура для хранения RGB пикселя
 struct RGB {
@@ -21,45 +33,66 @@ struct YUV {
     uint8_t v;
 };
 
-// Функция для чтения BMP файла
-bool readBMP(const string& filename, vector<RGB>& image, int& width, int& height) {
-    ifstream file(filename, ios::binary);
-    if (!file.is_open()) {
-        cerr << "Error opening BMP file" << endl;
-        return false;
+class BMPReader {
+public:
+    static bool read(const string& filename, vector<RGB>& image, int& width, int& height) {
+        ifstream file(filename, ios::binary);
+        if (!file.is_open()) {
+            throw FileNotWork("Error opening BMP file");
+        }
+
+        uint16_t bfType;
+        file.read(reinterpret_cast<char*>(&bfType), 2);
+        if (bfType != 0x4D42) {
+            throw FileNotWork("Unsupported BMP format");
+        }
+
+        file.seekg(18);
+        file.read(reinterpret_cast<char*>(&width), 4);
+        file.read(reinterpret_cast<char*>(&height), 4);
+
+        uint16_t bfReserved;
+        file.read(reinterpret_cast<char*>(&bfReserved), 2);
+        file.read(reinterpret_cast<char*>(&bfReserved), 2);
+
+        uint32_t bfOffBits;
+        file.read(reinterpret_cast<char*>(&bfOffBits), 4);
+        file.seekg(bfOffBits);
+
+        int row_padded = (width * 3 + 3) & (~3);
+        image.resize(width * height);
+        for (int i = height - 1; i >= 0; --i) {
+            for (int j = 0; j < width; ++j) {
+                file.read(reinterpret_cast<char*>(&image[i].b), 1);
+                file.read(reinterpret_cast<char*>(&image[i].g), 1);
+                file.read(reinterpret_cast<char*>(&image[i].r), 1);
+            }
+            file.ignore(row_padded - width * 3);
+        }
+        file.close();
+        return true;
     }
+};
 
-    file.seekg(18);
-    file.read(reinterpret_cast<char*>(&width), 4);
-    file.read(reinterpret_cast<char*>(&height), 4);
-    file.seekg(54);
 
-    image.resize(width * height);
-    for (int i = 0; i < width * height; ++i) {
-        file.read(reinterpret_cast<char*>(&image[i].b), 1);
-        file.read(reinterpret_cast<char*>(&image[i].g), 1);
-        file.read(reinterpret_cast<char*>(&image[i].r), 1);
+// для чтения YUV420 файла
+class YUV420Reader{
+public:
+    static bool read(const string& filename, vector<uint8_t>& yuvData, int width, int height) {
+        ifstream file(filename, ios::binary);
+        if (!file.is_open()) {
+            cerr << "Error opening YUV file" << endl;
+            return false;
+        }
+
+        size_t frameSize = width * height * 3 / 2;
+        yuvData.resize(frameSize);
+        file.read(reinterpret_cast<char*>(yuvData.data()), frameSize);
+
+        file.close();
+        return true;
     }
-
-    file.close();
-    return true;
-}
-
-// Функция для чтения YUV420 файла
-bool readYUV420(const string& filename, vector<uint8_t>& yuvData, int width, int height) {
-    ifstream file(filename, ios::binary);
-    if (!file.is_open()) {
-        cerr << "Error opening YUV file" << endl;
-        return false;
-    }
-
-    size_t frameSize = width * height * 3 / 2;
-    yuvData.resize(frameSize);
-    file.read(reinterpret_cast<char*>(yuvData.data()), frameSize);
-
-    file.close();
-    return true;
-}
+};
 
 // Функция для преобразования RGB в YUV420
 void convertRGBToYUV420(const vector<RGB>& rgbImage, vector<YUV>& yuvImage, int width, int height) {
