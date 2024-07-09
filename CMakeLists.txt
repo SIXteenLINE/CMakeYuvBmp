@@ -2,6 +2,9 @@
 # укажите здесь логику для конкретного проекта.
 #
 cmake_minimum_required (VERSION 3.8)
+# Установка минимальной версии стандарта C++
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 # Enable Hot Reload for MSVC compilers if supported.
 if (POLICY CMP0141)

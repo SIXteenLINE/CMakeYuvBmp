@@ -110,7 +110,7 @@ public:
 
         auto rgbToYuv = [](RGB rgb) -> YUV {
             YUV yuv;
-            yuv.y = static_cast<uint8_t>(0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b);
+            yuv.y = static_cast<uint8_t>(0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b); // по формулам выполняется RGB -> YUV
             yuv.u = static_cast<uint8_t>((-0.169 * rgb.r - 0.331 * rgb.g + 0.5 * rgb.b) + 128);
             yuv.v = static_cast<uint8_t>((0.5 * rgb.r - 0.419 * rgb.g - 0.081 * rgb.b) + 128);
             return yuv;
@@ -139,14 +139,15 @@ public:
     }
 };
 
+// U и V компоненты имеют пониженное разрешение по сравнению с Y
 class Overlay {
 public:
     static void apply(vector<uint8_t>& frame, const vector<YUV>& overlay, int width, int height, int overlayWidth, int overlayHeight, int posX, int posY) {
         for (int y = 0; y < overlayHeight; ++y) {
             for (int x = 0; x < overlayWidth; ++x) {
-                if (posY + y >= height || posX + x >= width) continue; // Check bounds
+                if (posY + y >= height || posX + x >= width) continue; 
 
-                int frameIndex = (posY + y) * width + (posX + x);
+                int frameIndex = (posY + y) * width + (posX + x); //Индексы для доступа к массивам пикселей базового изображения и накладываемого изображения
                 int overlayIndex = y * overlayWidth + x;
 
                 frame[frameIndex] = overlay[overlayIndex].y;
@@ -162,7 +163,6 @@ public:
 };
 
 int main() {
-    setlocale(LC_ALL, "rus");
 
     // Пути к файлам и размеры
     string inputYUVFile = "C:/Users/Зуфар/Desktop/Yo/C/CMakeYuvBmp/akiyo_qcif.yuv";
